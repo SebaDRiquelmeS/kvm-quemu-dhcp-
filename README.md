@@ -1,80 +1,72 @@
-# KVM + QEMU → Laboratorio de Pentesting con DHCP
+# VulnHub Lab — KVM + QEMU + DHCP automático
 
-Scripts para desplegar **cualquier** máquina VulnHub con DHCP funcional desde cero.
+Despliega cualquier máquina VulnHub con DHCP funcional en un solo comando.
 
-## Un comando
+## Instalación (primera vez)
 
 ```bash
-./convert.sh ~/Downloads/Maquina.rar maquina
-./deploy.sh maquina ./images/maquina.qcow2
+git clone git@github.com:SebaDRiquelmeS/kvm-quemu-dhcp-.git
+cd kvm-quemu-dhcp-
+./install.sh
 ```
 
-## Scripts
-
-| Script | Qué hace |
-|--------|----------|
-| `deploy.sh` | **Genérico** — despliega cualquier VM VulnHub |
-| `deploy-kioptrix.sh` | Kioptrix Level 1 (Baja) preconfigurado |
-| `deploy-tr0ll.sh` | Tr0ll (Media) preconfigurado |
-| `deploy-mrrobot.sh` | Mr. Robot (Alta) preconfigurado |
-| `deploy-all.sh` | Despliega las 3 si están en `./images/` |
-| `convert.sh` | Convierte `.rar`/`.ova`/`.vmdk` a `.qcow2` |
+`install.sh` instala libvirt, qemu, módulos del kernel, grupo libvirt, y deja todo listo.
 
 ## Uso
 
 ```bash
-# 1. Clonar
-git clone git@github.com:SebaDRiquelmeS/kvm-quemu-dhcp-.git
-cd kvm-quemu-dhcp-
+# 1. Convertir imagen de VulnHub
+./convert.sh ~/Downloads/mi-maquina.ova mi-maquina
 
-# 2. Convertir
-./convert.sh ~/Downloads/Kioptrix_Level_1.rar kioptrix
-./convert.sh ~/Downloads/Tr0ll.rar tr0ll
-./convert.sh ~/Downloads/mrRobot.ova mrrobot
-
-# 3. Desplegar
-./deploy-all.sh
+# 2. Desplegar
+./deploy.sh mi-maquina ./images/mi-maquina.qcow2
 ```
 
-## Para tu propia máquina VulnHub
+## Opciones de deploy.sh
+
+```
+--disk  ide:hda     Disco IDE (máquinas viejas, Red Hat)
+--disk  sata:sda    Disco SATA (default)
+--nic   pcnet       NIC AMD PCnet (VMware viejo)
+--nic   e1000       NIC Intel (default)
+--mem   256         RAM en MB (default: 512)
+--mac   00:0c:29:xx MAC original (ayuda DHCP)
+--fix-grub          Arregla GRUB timeout=-1
+--fix-modules       Arregla modules.conf + DHCP
+--os    redhat      Fuerza fixes Red Hat/CentOS
+--os    debian      Fuerza fixes Debian/Ubuntu
+```
+
+## Ejemplos
 
 ```bash
-./convert.sh ~/Downloads/MiMaquina.ova mimaquina
-./deploy.sh mimaquina ./images/mimaquina.qcow2
+# Máquina moderna Ubuntu
+./deploy.sh mivm ./images/mivm.qcow2
+
+# Máquina vieja Red Hat 7.2
+./deploy.sh kioptrix ./images/kioptrix.qcow2 --disk ide:hda --nic pcnet --mem 256 --fix-modules --os redhat
+
+# Máquina con GRUB atascado
+./deploy.sh tr0ll ./images/tr0ll.qcow2 --fix-grub --os debian
 ```
 
-Opciones disponibles en `deploy.sh`:
-
-```
---disk  ide:hda       # Disco IDE (maquinas viejas)
---disk  sata:sda      # Disco SATA (default)
---nic   pcnet         # NIC AMD PCnet (VMs VMware viejas)
---nic   e1000         # NIC Intel e1000 (default)
---mem   256           # RAM en MB
---mac   00:0c:29:...  # MAC original (ayuda con DHCP)
---fix-grub            # Corrige timeout=-1 de GRUB
---fix-modules         # Corrige alias eth0 en modules.conf
---os    redhat        # Tipo de SO
---os    debian
-```
-
-## Fixes que aplica automáticamente
+## Fixes que aplica
 
 | Fix | Cuándo |
 |-----|--------|
-| `machine='pc'` | Siempre (NIC visible en bus PCI) |
-| `<driver type='qcow2'/>` | Siempre (bug QEMU 11.x -blockdev) |
-| Firewall iptables | Siempre (UFW bloquea DHCP) |
-| GRUB timeout=3 | Si detecta `timeout=-1` |
-| modules.conf alias | Con `--fix-modules` o auto-detect Red Hat |
-| DHCP_HOSTNAME | Con `--fix-modules` o auto-detect Red Hat |
-| /etc/network/interfaces | Auto-detect Debian/Ubuntu |
-| udev persistent rules | Auto-detect Debian/Ubuntu |
+| Machine `pc` (i440FX) | Siempre |
+| `<driver type='qcow2'/>` | Siempre (bug QEMU 11.x) |
+| Firewall iptables | Siempre (UFW no bloquea DHCP) |
+| GRUB timeout=3 | Con `--fix-grub` o auto-detect |
+| modules.conf | Con `--fix-modules` o Red Hat |
+| /etc/network/interfaces | Debian/Ubuntu |
+| udev persistent rules | Debian/Ubuntu |
 
-## Requisitos
+## Scripts
 
-```bash
-sudo pacman -S libvirt qemu-base qemu-nbd
-sudo usermod -aG libvirt $USER
-# Re-login
-```
+| Script | Función |
+|--------|---------|
+| `install.sh` | Instala todo lo necesario (1 vez) |
+| `convert.sh` | .ova/.rar/.vmdk → .qcow2 |
+| `deploy.sh` | Despliega cualquier VM con DHCP |
+| `main.tf` | Alternativa con Terraform |
