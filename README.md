@@ -1,104 +1,80 @@
-# KVM + QEMU + Terraform → Lab de Pentesting con DHCP funcional
+# KVM + QEMU → Laboratorio de Pentesting con DHCP
 
-Despliegue automatizado de 3 máquinas VulnHub (Baja, Media, Alta) con red DHCP 100% funcional.
+Scripts para desplegar **cualquier** máquina VulnHub con DHCP funcional desde cero.
 
-## Tabla de fixes incluidos
+## Un comando
 
-| # | Problema | Causa | Solución |
-|---|----------|-------|----------|
-| 1 | VMs no bootean | QEMU 11.x `-blockdev driver=file` roto con SeaBIOS | `<disk type='file'>` + `<driver type='qcow2'/>` |
-| 2 | Sin DHCP | UFW bloquea FORWARD | `ufw allow in on virbr1` + iptables |
-| 3 | Tr0ll atascado en GRUB | `timeout=-1` (espera infinita) | `set timeout=3` en grub.cfg |
-| 4 | Kioptrix sin red | `alias eth0 e1000` pero NIC es `pcnet` | `alias eth0 pcnet32` + NIC `pcnet` |
-| 5 | NIC invisible | Machine `q35` esconde NIC tras PCIe bridges | `machine='pc'` (i440FX) |
-| 6 | dhcpcd sin hostname | `DHCP_HOSTNAME` vacío en Kioptrix | Agregar a `ifcfg-eth0` |
+```bash
+./convert.sh ~/Downloads/Maquina.rar maquina
+./deploy.sh maquina ./images/maquina.qcow2
+```
+
+## Scripts
+
+| Script | Qué hace |
+|--------|----------|
+| `deploy.sh` | **Genérico** — despliega cualquier VM VulnHub |
+| `deploy-kioptrix.sh` | Kioptrix Level 1 (Baja) preconfigurado |
+| `deploy-tr0ll.sh` | Tr0ll (Media) preconfigurado |
+| `deploy-mrrobot.sh` | Mr. Robot (Alta) preconfigurado |
+| `deploy-all.sh` | Despliega las 3 si están en `./images/` |
+| `convert.sh` | Convierte `.rar`/`.ova`/`.vmdk` a `.qcow2` |
+
+## Uso
+
+```bash
+# 1. Clonar
+git clone git@github.com:SebaDRiquelmeS/kvm-quemu-dhcp-.git
+cd kvm-quemu-dhcp-
+
+# 2. Convertir
+./convert.sh ~/Downloads/Kioptrix_Level_1.rar kioptrix
+./convert.sh ~/Downloads/Tr0ll.rar tr0ll
+./convert.sh ~/Downloads/mrRobot.ova mrrobot
+
+# 3. Desplegar
+./deploy-all.sh
+```
+
+## Para tu propia máquina VulnHub
+
+```bash
+./convert.sh ~/Downloads/MiMaquina.ova mimaquina
+./deploy.sh mimaquina ./images/mimaquina.qcow2
+```
+
+Opciones disponibles en `deploy.sh`:
+
+```
+--disk  ide:hda       # Disco IDE (maquinas viejas)
+--disk  sata:sda      # Disco SATA (default)
+--nic   pcnet         # NIC AMD PCnet (VMs VMware viejas)
+--nic   e1000         # NIC Intel e1000 (default)
+--mem   256           # RAM en MB
+--mac   00:0c:29:...  # MAC original (ayuda con DHCP)
+--fix-grub            # Corrige timeout=-1 de GRUB
+--fix-modules         # Corrige alias eth0 en modules.conf
+--os    redhat        # Tipo de SO
+--os    debian
+```
+
+## Fixes que aplica automáticamente
+
+| Fix | Cuándo |
+|-----|--------|
+| `machine='pc'` | Siempre (NIC visible en bus PCI) |
+| `<driver type='qcow2'/>` | Siempre (bug QEMU 11.x -blockdev) |
+| Firewall iptables | Siempre (UFW bloquea DHCP) |
+| GRUB timeout=3 | Si detecta `timeout=-1` |
+| modules.conf alias | Con `--fix-modules` o auto-detect Red Hat |
+| DHCP_HOSTNAME | Con `--fix-modules` o auto-detect Red Hat |
+| /etc/network/interfaces | Auto-detect Debian/Ubuntu |
+| udev persistent rules | Auto-detect Debian/Ubuntu |
 
 ## Requisitos
 
 ```bash
-# Arch Linux
-sudo pacman -S terraform libvirt qemu-base qemu-nbd
-
-# Tu usuario en grupo libvirt
+sudo pacman -S libvirt qemu-base qemu-nbd
 sudo usermod -aG libvirt $USER
-# Cerrá sesión y volvé a entrar
+# Re-login
 ```
-
-## Estructura del proyecto
-
-```
-.
-├── main.tf          # Terraform: red + VMs + fixes
-├── deploy.sh        # Script alternativo (sin Terraform)
-├── images/          # Poner aqui los .qcow2
-│   ├── kioptrix.qcow2
-│   ├── tr0ll.qcow2
-│   └── mrrobot.qcow2
-└── README.md
-```
-
-## Uso rápido
-
-```bash
-# 1. Clonar
-git clone https://github.com/SebaDRiquelmeS/kvm-quemu-dhcp-.git
-cd kvm-quemu-dhcp-
-
-# 2. Meter las imagenes .qcow2 en ./images/
-mkdir -p images
-# cp /ruta/a/tus/*.qcow2 images/
-
-# 3. Desplegar
-terraform init
-terraform apply
-```
-
-## Conversión de .vmdk/.ova a .qcow2
-
-```bash
-# .rar (VMware)
-bsdtar -xvf maquina.rar
-qemu-img convert -f vmdk -O qcow2 maquina.vmdk images/maquina.qcow2
-
-# .ova (VirtualBox/VMware)
-bsdtar -xvf maquina.ova
-qemu-img convert -f vmdk -O qcow2 *-disk1.vmdk images/maquina.qcow2
-```
-
-## VMs desplegadas
-
-| VM | IP (DHCP) | Disco | NIC | Machine |
-|----|-----------|-------|-----|---------|
-| kioptrix | 192.168.100.x | IDE (hda) | pcnet | pc |
-| tr0ll | 192.168.100.x | SATA (sda) | e1000 | pc |
-| mrrobot | 192.168.100.x | SATA (sda) | e1000 | pc |
-
-## Comandos post-deploy
-
-```bash
-# Ver IPs asignadas
-virsh net-dhcp-leases vulnhub_lab
-
-# VNC (si no tenés virt-viewer)
-gvncviewer localhost:0   # kioptrix
-gvncviewer localhost:1   # tr0ll
-gvncviewer localhost:2   # mrrobot
-
-# Consola serial
-virsh console kioptrix
-
-# Escaneo inicial
-nmap -sC -sV -p- 192.168.100.0/24
-```
-
----
-
-## Convertir tus propias máquinas VulnHub
-
-```bash
-./convert.sh ~/Downloads/Kioptrix_Level_1.rar kioptrix
-./convert.sh ~/Downloads/Tr0ll.rar tr0ll
-./convert.sh ~/Downloads/mrRobot.ova mrrobot
-```
-
-Luego `terraform apply` y listo.
