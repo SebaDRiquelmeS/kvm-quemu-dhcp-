@@ -1,61 +1,92 @@
-# KVM + QEMU - Laboratorio de Pentesting con DHCP funcional
+# KVM + QEMU + Terraform → Lab de Pentesting con DHCP funcional
 
-Script de despliegue automático para máquinas VulnHub con DHCP 100% funcional.
+Despliegue automatizado de 3 máquinas VulnHub (Baja, Media, Alta) con red DHCP 100% funcional.
 
-## Problemas que soluciona
+## Tabla de fixes incluidos
 
-| Problema | Causa | Solución |
-|----------|-------|----------|
-| VMs no bootean | QEMU 11.x `-blockdev driver=file` no funciona con SeaBIOS | `<driver type='qcow2'/>` + `<disk type='file'>` |
-| Sin DHCP | UFW bloquea tráfico en FORWARD | `ufw allow in on virbr1` + reglas iptables |
-| Tr0ll atascado en GRUB | `timeout=-1` | Cambiar a `timeout=3` en grub.cfg |
-| Kioptrix sin red | `alias eth0 e1000` pero NIC es `pcnet` | Revertir a `alias eth0 pcnet32` |
-| NIC invisible | Machine `q35` esconde NIC tras PCIe bridges | Usar `machine='pc'` (i440FX) |
-| dhcpcd sin hostname | `DHCP_HOSTNAME` vacío | Agregar en ifcfg-eth0 |
+| # | Problema | Causa | Solución |
+|---|----------|-------|----------|
+| 1 | VMs no bootean | QEMU 11.x `-blockdev driver=file` roto con SeaBIOS | `<disk type='file'>` + `<driver type='qcow2'/>` |
+| 2 | Sin DHCP | UFW bloquea FORWARD | `ufw allow in on virbr1` + iptables |
+| 3 | Tr0ll atascado en GRUB | `timeout=-1` (espera infinita) | `set timeout=3` en grub.cfg |
+| 4 | Kioptrix sin red | `alias eth0 e1000` pero NIC es `pcnet` | `alias eth0 pcnet32` + NIC `pcnet` |
+| 5 | NIC invisible | Machine `q35` esconde NIC tras PCIe bridges | `machine='pc'` (i440FX) |
+| 6 | dhcpcd sin hostname | `DHCP_HOSTNAME` vacío en Kioptrix | Agregar a `ifcfg-eth0` |
 
 ## Requisitos
 
 ```bash
-sudo pacman -S libvirt qemu-base qemu-nbd
+# Arch Linux
+sudo pacman -S terraform libvirt qemu-base qemu-nbd
+
+# Tu usuario en grupo libvirt
 sudo usermod -aG libvirt $USER
+# Cerrá sesión y volvé a entrar
 ```
 
-## Uso
+## Estructura del proyecto
+
+```
+.
+├── main.tf          # Terraform: red + VMs + fixes
+├── deploy.sh        # Script alternativo (sin Terraform)
+├── images/          # Poner aqui los .qcow2
+│   ├── kioptrix.qcow2
+│   ├── tr0ll.qcow2
+│   └── mrrobot.qcow2
+└── README.md
+```
+
+## Uso rápido
 
 ```bash
 # 1. Clonar
-git clone <repo>
+git clone https://github.com/SebaDRiquelmeS/kvm-quemu-dhcp-.git
 cd kvm-quemu-dhcp-
 
-# 2. Poner las imagenes .qcow2 en ./images/ o .vmdk en cualquier lado
+# 2. Meter las imagenes .qcow2 en ./images/
 mkdir -p images
+# cp /ruta/a/tus/*.qcow2 images/
 
 # 3. Desplegar
-./deploy.sh
+terraform init
+terraform apply
 ```
 
-## Estructura de las VMs
-
-| VM | IP (DHCP) | Dificultad | Disco | NIC | Machine |
-|----|-----------|------------|-------|-----|---------|
-| kioptrix | 192.168.100.x | Baja | IDE (hda) | pcnet | pc |
-| tr0ll | 192.168.100.x | Media | SATA (sda) | e1000 | pc |
-| mrrobot | 192.168.100.x | Alta | SATA (sda) | e1000 | pc |
-
-## Comandos útiles post-deploy
+## Conversión de .vmdk/.ova a .qcow2
 
 ```bash
-# Ver IPs
+# .rar (VMware)
+bsdtar -xvf maquina.rar
+qemu-img convert -f vmdk -O qcow2 maquina.vmdk images/maquina.qcow2
+
+# .ova (VirtualBox/VMware)
+bsdtar -xvf maquina.ova
+qemu-img convert -f vmdk -O qcow2 *-disk1.vmdk images/maquina.qcow2
+```
+
+## VMs desplegadas
+
+| VM | IP (DHCP) | Disco | NIC | Machine |
+|----|-----------|-------|-----|---------|
+| kioptrix | 192.168.100.x | IDE (hda) | pcnet | pc |
+| tr0ll | 192.168.100.x | SATA (sda) | e1000 | pc |
+| mrrobot | 192.168.100.x | SATA (sda) | e1000 | pc |
+
+## Comandos post-deploy
+
+```bash
+# Ver IPs asignadas
 virsh net-dhcp-leases vulnhub_lab
 
-# Consola
-virsh console kioptrix
-
-# VNC
+# VNC (si no tenés virt-viewer)
 gvncviewer localhost:0   # kioptrix
 gvncviewer localhost:1   # tr0ll
 gvncviewer localhost:2   # mrrobot
 
-# Escaneo
+# Consola serial
+virsh console kioptrix
+
+# Escaneo inicial
 nmap -sC -sV -p- 192.168.100.0/24
 ```
