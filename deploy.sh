@@ -63,6 +63,7 @@ fi
 
 VM_NAME="$1"
 IMG="$2"
+IMG="$(realpath "$IMG")"
 shift 2
 
 while [ $# -gt 0 ]; do

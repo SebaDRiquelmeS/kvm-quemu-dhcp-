@@ -5,7 +5,7 @@
 # ============================================================
 set -e
 
-IMG="${1:-./images/kioptrix.qcow2}"
+IMG="$(realpath "${1:-./images/kioptrix.sh.qcow2}")"
 NAME="kioptrix"
 NET="vulnhub_lab"
 
