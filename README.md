@@ -90,3 +90,15 @@ virsh console kioptrix
 # Escaneo inicial
 nmap -sC -sV -p- 192.168.100.0/24
 ```
+
+---
+
+## Convertir tus propias máquinas VulnHub
+
+```bash
+./convert.sh ~/Downloads/Kioptrix_Level_1.rar kioptrix
+./convert.sh ~/Downloads/Tr0ll.rar tr0ll
+./convert.sh ~/Downloads/mrRobot.ova mrrobot
+```
+
+Luego `terraform apply` y listo.
